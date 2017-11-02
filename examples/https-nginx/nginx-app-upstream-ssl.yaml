@@ -1,0 +1,133 @@
+apiVersion: v1            
+kind: ServiceAccount      
+metadata:                 
+  name: proxy             
+  annotations:            
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"nginx-service"}}'   
+---
+apiVersion: v1
+kind: Route
+metadata:
+  labels:
+    app: nginx
+  name: nginx-service
+  namespace: myproject
+spec:
+  port:
+    targetPort: 8443
+  to:
+    kind: Service
+    name: nginx-service
+    weight: 100
+  wildcardPolicy: None
+  tls:
+    termination: passthrough
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  annotations:
+    service.alpha.openshift.io/serving-cert-secret-name: proxy-tls
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 443
+    targetPort: 8443
+  selector:
+    app: nginx
+---
+apiVersion: v1
+data:
+  default.conf: |
+    server {
+            listen 8080 default_server ssl;
+
+            root /usr/share/nginx/html;
+            index index.html;
+
+            ssl on;
+            ssl_certificate /etc/nginx/ssl/nginx.crt;
+            ssl_certificate_key /etc/nginx/ssl/nginx.key;
+            ssl_client_certificate /etc/nginx/conf.d/ca.crt;
+
+            location / {
+                    try_files $uri $uri/ =404;
+            }
+    }
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICyDCCAbCgAwIBAgIBATANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwpleGFt
+    cGxlQ0ExMB4XDTE3MTEwMjE5NTgzNloXDTE4MTEwMjE5NTgzNlowFTETMBEGA1UE
+    AxMKZXhhbXBsZUNBMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM7e
+    ZHqJZWamthqu8Nqmf4HU44Vh3nUENe1wqAgedb1NTk5B0xWkWWfZzcYdXKQGxC5f
+    YxYmFu3UO6DETJ3rKVM7T5LUOPPO8YIFNZn/fcRfoP+21Z5wmZKOa+AsgJDamINY
+    nSUMrA2K9mkZriWGsHxInjtMYZNMov7TxzeK3nM/fCb4VIwlu01j2UlwRc2R7CLP
+    umYGFJDzOOsIWfzubKZo9oMZM5uzf7cBkGtpSeMW0p0Ugud7+mqZ7XpP3M5nDpGm
+    svtlMyYXXCJceURPxmZ9ShBkjzkkiQiQ6a8HokXcjCRbBSUykD6CFlWhjBStLkiX
+    PmGMOj5274CEzEQP+mECAwEAAaMjMCEwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB
+    /wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAe3b4s1Z0GyUh5YWmVlIjoY+s+g
+    eB0hRhCQ+nPg93qAjQzurN7R14IX/nmsQoSAwqjhSxF/4LzaN1RfHS7qqfT6Pmzg
+    FGimr4m7JQU0BqnskosSV5mqLWhtSvfP+2WJSXdmPAWuqDmZMY1pRx//4V2TQKwt
+    vyyDJ9P+0MbUMtk2qY1q9HCT5vcoaesuEk/XXdGJUKj201KGTg5UUY2Kw23OAJr8
+    jPnU/B061L+kt6uzBTy5ikEzJtN3qlBMr027b1lOao1a+XsQoHE64HWgrSgMzeW3
+    RwN6SERo8UCwfs/CEKFxCHERUr1GoammaqUDCvsShwZOToFQn0hCyUoivKs=
+    -----END CERTIFICATE-----
+kind: ConfigMap
+metadata:
+  name: nginxconfigmap
+  namespace: myproject
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: my-nginx
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: nginxsecret
+      - name: proxy-tls
+        secret:
+          secretName: proxy-tls
+      - name: configmap-volume
+        configMap:
+          name: nginxconfigmap
+      serviceAccountName: proxy
+      containers:
+       - name: oauth-proxy 
+         image: localhost:5000/oauth-proxy-ca:v1.0.0
+         ports:            
+         - containerPort: 8443                         
+           name: public    
+         args:             
+         - --https-address=:8443                       
+         - --provider=openshift                        
+         - --openshift-service-account=proxy           
+         - --upstream=https://localhost:8080            
+         - --tls-cert=/etc/tls/private/tls.crt
+         - --tls-key=/etc/tls/private/tls.key
+         - --upstream-ca=/mnt/ca.crt
+         - --cookie-secret=SECRET                      
+         volumeMounts:     
+         - mountPath: /etc/tls/private                 
+           name: proxy-tls
+         - mountPath: /mnt/
+           name: configmap-volume 
+       - name: nginx
+         image: localhost:5000/newnginxhttps:1.1
+         command: ["/home/auto-reload-nginx.sh"]
+         ports:
+         - containerPort: 8080
+         volumeMounts:
+         - mountPath: /etc/nginx/ssl
+           name: secret-volume
+         - mountPath: /etc/nginx/conf.d
+           name: configmap-volume

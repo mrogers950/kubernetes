@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Route
+metadata:
+  annotations:
+    openshift.io/host.generated: "true"
+  creationTimestamp: 2017-11-02T14:18:39Z
+  labels:
+    app: nginx
+  name: nginx-service
+  namespace: myproject
+  resourceVersion: "1322"
+  selfLink: /oapi/v1/namespaces/myproject/routes/nginx-service
+  uid: b916f6bb-bfd8-11e7-b3a9-c85b762603b0
+spec:
+  host: nginx-service-myproject.192.168.1.101.nip.io
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: nginx-service
+    weight: 100
+  wildcardPolicy: None
+status:
+  ingress:
+  - conditions:
+    - lastTransitionTime: 2017-11-02T14:18:39Z
+      status: "True"
+      type: Admitted
+    host: nginx-service-myproject.192.168.1.101.nip.io
+    routerName: router
+    wildcardPolicy: None

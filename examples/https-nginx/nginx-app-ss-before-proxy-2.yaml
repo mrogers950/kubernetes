@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Route
+metadata:
+  labels:
+    app: nginx
+  name: nginx-service
+  namespace: myproject
+spec:
+  port:
+    targetPort: 8080
+  to:
+    kind: Service
+    name: nginx-service
+    weight: 100
+  wildcardPolicy: None
+  tls:
+    termination: passthrough
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 443
+    targetPort: 8080
+  selector:
+    app: nginx
+---
+apiVersion: v1
+data:
+  default.conf: "server {\n        listen 8080 default_server ssl;\n\n        root
+    /usr/share/nginx/html;\n        index index.html;\n\n\tssl on;\n        ssl_certificate
+    /etc/nginx/ssl/nginx.crt;\n        ssl_certificate_key /etc/nginx/ssl/nginx.key;\n\tssl_client_certificate
+    /etc/nginx/conf.d/ca.crt;\n\n        location / {\n                try_files $uri
+    $uri/ =404;\n        }\n}\n"
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICzDCCAbSgAwIBAgIBATANBgkqhkiG9w0BAQsFADAXMRUwEwYDVQQDDAxOQUhT
+    T0ZUIENBIzEwHhcNMTcxMDMxMTc0ODI3WhcNMTgxMDMxMTc0ODI3WjAXMRUwEwYD
+    VQQDDAxOQUhTT0ZUIENBIzEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
+    AQDjyKu6MNYUe9JslJ/0/H+mUmgVLzFEhB/LDsqFncjXLSnbE+j9h8B3RcEoYlCl
+    oTBdSQlQ4kaljEldBYiFKi+KWVGw5MqaJHXOIA83tktWbm/xNVysWL5CDJjfarre
+    u5XevJoxvDYSwGvCiZvisPYh5wO0++8NBH8Qh+Km5fbNWX4mZ6jNKpIIEMbAYKIb
+    INQhxtST5dWJURI5TMnf8ZNw9LUWOUPO34PCe6SuLJWuYV7aZQze4RZQ8uDQTiPN
+    nT4Xi4kfwjEeTfxekycUZoMR9zbPWArZbzJu0QfVQYIBjc2Enx2G3KiZKoYTKsyl
+    2q8vXjVLwujpUrDj7iDPPEBPAgMBAAGjIzAhMA4GA1UdDwEB/wQEAwICBDAPBgNV
+    HRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQAtEzX6DU2IR59wgaVcZIjO
+    TJr/v8qn7FqdE1YFkhnvj4TDu7z+CrZBAJG1pdJEWHR2wcLHDfHJinVb00MfyhdG
+    oYPCq7ugAp2H68ZURfK3J7kIW62vwbwLQKpv6vbLZ3JdupyU/c3Gt7+w+NdwrqD+
+    /WxXC3btu4Dhw5rLM3pu8WYYMm4YiNs6k6ybIMiW6qRu8S3JF33jRPwAKGGOWq2S
+    ArzcV5uamZy50tXxCaulfOQxmia2gwwRLoTL/xbQMJPNVkQGNINxK8KjqXjNhX8Q
+    J6kOp3ArCHnYDGxQzptC7Kla0VpP/zqSU+XHE1l0N4rZml06VicEcSRLcxupcHVi
+    -----END CERTIFICATE-----
+kind: ConfigMap
+metadata:
+  name: nginxconfigmap
+  namespace: myproject
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: my-nginx
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: nginxsecret
+      - name: configmap-volume
+        configMap:
+          name: nginxconfigmap
+      containers:
+      - name: nginx
+        image: localhost:5000/newnginxhttps:1.1
+        command: ["/home/auto-reload-nginx.sh"]
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - mountPath: /etc/nginx/ssl
+          name: secret-volume
+        - mountPath: /etc/nginx/conf.d
+          name: configmap-volume

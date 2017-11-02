@@ -1,23 +1,86 @@
+apiVersion: v1            
+kind: ServiceAccount      
+metadata:                 
+  name: proxy             
+  annotations:            
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"nginx-service"}}'   
+---
+apiVersion: v1
+kind: Route
+metadata:
+  labels:
+    app: nginx
+  name: nginx-service
+  namespace: myproject
+spec:
+  port:
+    targetPort: 8443
+  to:
+    kind: Service
+    name: nginx-service
+    weight: 100
+  wildcardPolicy: None
+  tls:
+    termination: passthrough
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginxsvc
+  name: nginx-service
+  annotations:
+    service.alpha.openshift.io/serving-cert-secret-name: proxy-tls
   labels:
     app: nginx
 spec:
-  type: NodePort
   ports:
-  - port: 80
-    protocol: TCP
-    name: http
   - port: 443
-    protocol: TCP
-    name: https
+    targetPort: 8443
   selector:
     app: nginx
 ---
 apiVersion: v1
-kind: ReplicationController
+data:
+  default.conf: |
+    server {
+            listen 127.0.0.1:8080 default_server ssl http2;
+
+            root /usr/share/nginx/html;
+            index index.html;
+
+            ssl on;
+            ssl_certificate /etc/nginx/ssl/nginx.crt;
+            ssl_certificate_key /etc/nginx/ssl/nginx.key;
+            ssl_trusted_certificate /etc/nginx/conf.d/ca.crt;
+
+            location / {
+                    try_files $uri $uri/ =404;
+            }
+    }
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIICyDCCAbCgAwIBAgIBATANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwpleGFt
+    cGxlQ0ExMB4XDTE3MTEwMjIxMzg0MFoXDTE4MTEwMjIxMzg0MFowFTETMBEGA1UE
+    AxMKZXhhbXBsZUNBMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMof
+    0ZDPEOcQqvkZpp1xaUiZbn9059ee/hMMm1l8Wk2IR26put37xT9MAawN/QwCO6xR
+    cwV8p/4nROvr4WxnMYVvhVPK5/0xGbbUByigMDlIpzIq3IyPKYdUYG9+UUjdcdQN
+    ZzwGm7QiKOrI186uZxMvfubimY/tQ5wobl8KQZbSQWrUFsmuIqfJbzXp7h63Yzp7
+    3oMTcYN6gVuDPgdSUBAZj0JV5zLPTl15Fst6VacTSdR9IhoV9SCllBgI8tir/DGM
+    2JtgtSRsAG5yB0Hf/2Lbzr0cxp/fYdtkzhlkxAkpBRZc3tVp4emglPsv/v/zDToA
+    qmYKLhm0FcjrnzLM6akCAwEAAaMjMCEwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB
+    /wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAA9Xypc9uR5LZSje4bLSPkPNuWQF
+    76YwIF78wvurdWcfEWCmkDwFk0q5+p0Qq2vyfD7+zkYmNnamDlcyyfTHVev2SBqJ
+    aEO6/pledcHO2Z6S9+L1lkBpwy/7CKdiZfJJ3KzAdunbg3Q82P86KzB0JyKsi0Ae
+    VSKWlobG4cy65edtpC0Phf8XjPP26R0qnLYEtn0VeW+kntsEEqOA8gz6OzVh97Oa
+    FvI5QasuCj81T2eXQAZi/jCa9E8Ae0ebXdGwETdRyx+jDpBT9Xqs6kWFUIoVksLG
+    pZ4OC8iNdMtjE+vmJ7HwRXjWXzBIiD5neHUWtwraGn5k4T7T39fsJXG/1aM=
+    -----END CERTIFICATE-----
+kind: ConfigMap
+metadata:
+  name: nginxconfigmap
+  namespace: myproject
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
 metadata:
   name: my-nginx
 spec:
@@ -31,24 +94,40 @@ spec:
       - name: secret-volume
         secret:
           secretName: nginxsecret
+      - name: proxy-tls
+        secret:
+          secretName: proxy-tls
       - name: configmap-volume
         configMap:
           name: nginxconfigmap
+      serviceAccountName: proxy
       containers:
-      - name: nginxhttps
-        image: ymqytw/nginxhttps:1.5
-        command: ["/home/auto-reload-nginx.sh"]
-        ports:
-        - containerPort: 443
-        - containerPort: 80
-        livenessProbe:
-          httpGet:
-            path: /index.html
-            port: 80
-          initialDelaySeconds: 30
-          timeoutSeconds: 1
-        volumeMounts:
-        - mountPath: /etc/nginx/ssl
-          name: secret-volume
-        - mountPath: /etc/nginx/conf.d
-          name: configmap-volume
+       - name: oauth-proxy 
+         image: localhost:5000/oauth-proxy-ca:v1.0.0
+         ports:            
+         - containerPort: 8443                         
+           name: public    
+         args:             
+         - --https-address=:8443                       
+         - --provider=openshift                        
+         - --openshift-service-account=proxy           
+         - --upstream=https://127.0.0.1:8080            
+         - --tls-cert=/etc/tls/private/tls.crt
+         - --tls-key=/etc/tls/private/tls.key
+         - --upstream-ca=/mnt/ca.crt
+         - --cookie-secret=SECRET                      
+         volumeMounts:     
+         - mountPath: /etc/tls/private                 
+           name: proxy-tls
+         - mountPath: /mnt/
+           name: configmap-volume 
+       - name: nginx
+         image: localhost:5000/newnginxhttps:1.1
+         command: ["/home/auto-reload-nginx.sh"]
+         ports:
+         - containerPort: 8080
+         volumeMounts:
+         - mountPath: /etc/nginx/ssl
+           name: secret-volume
+         - mountPath: /etc/nginx/conf.d
+           name: configmap-volume
