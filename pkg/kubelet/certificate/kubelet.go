@@ -25,15 +25,131 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"crypto/tls"
+	//"github.com/golang/glog"
 	certificates "k8s.io/api/certificates/v1beta1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	clientcertificates "k8s.io/client-go/kubernetes/typed/certificates/v1beta1"
+	"k8s.io/client-go/plugin/pkg/client/auth/exec"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
+	"sync"
 )
+
+type execManager struct {
+	pluginPath     string
+	firstArg       string
+	config         *certificate.Config
+	certAccessLock sync.RWMutex
+	cert           *tls.Certificate
+}
+
+func (m *execManager) SetCertificateSigningRequestClient(clientcertificates.CertificateSigningRequestInterface) error {
+	return nil
+}
+
+func (m *execManager) Start() {
+	args := make([]string, 0)
+	args = append(args, m.firstArg)
+	// add additional args
+
+	execProvider := &api.ExecConfig{
+		Command:    m.pluginPath,
+		Args:       args,
+		APIVersion: "client.authentication.k8s.io/v1alpha1",
+	}
+	auth, err := exec.GetAuthenticator(execProvider)
+	if err != nil {
+		fmt.Printf("Error getting exec authenticator: %v\n", err)
+		return
+	}
+	cert, err := auth.Cert()
+	if err != nil {
+		fmt.Printf("Error fetching cert: %v\n", err)
+		return
+	}
+	m.cert = cert
+}
+
+func (m *execManager) Current() *tls.Certificate {
+	m.certAccessLock.RLock()
+	defer m.certAccessLock.RUnlock()
+	return m.cert
+}
+
+func (m *execManager) ServerHealthy() bool {
+	return true
+}
+
+func NewExecManager(pluginPath, nodeName string, config *certificate.Config) (certificate.Manager, error) {
+	return &execManager{pluginPath: pluginPath, firstArg: nodeName, config: config}, nil
+}
+
+func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletconfig.KubeletConfiguration, nodeName types.NodeName, getAddresses func() []v1.NodeAddress, certDirectory string) (certificate.Manager, error) {
+	certificateStore, err := certificate.NewFileStore(
+		"kubelet-server",
+		certDirectory,
+		certDirectory,
+		kubeCfg.TLSCertFile,
+		kubeCfg.TLSPrivateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize server certificate store: %v", err)
+	}
+	var certificateExpiration = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: metrics.KubeletSubsystem,
+			Subsystem: "certificate_manager",
+			Name:      "server_expiration_seconds",
+			Help:      "Gauge of the lifetime of a certificate. The value is the date the certificate will expire in seconds since January 1, 1970 UTC.",
+		},
+	)
+	prometheus.MustRegister(certificateExpiration)
+
+	getTemplate := func() *x509.CertificateRequest {
+		hostnames, ips := addressesToHostnamesAndIPs(getAddresses())
+		// don't return a template if we have no addresses to request for
+		if len(hostnames) == 0 && len(ips) == 0 {
+			return nil
+		}
+		return &x509.CertificateRequest{
+			Subject: pkix.Name{
+				CommonName:   fmt.Sprintf("system:node:%s", nodeName),
+				Organization: []string{"system:nodes"},
+			},
+			DNSNames:    hostnames,
+			IPAddresses: ips,
+		}
+	}
+	m, err := NewExecManager(pluginPath, string(nodeName), &certificate.Config{
+		CertificateSigningRequestClient: nil,
+		GetTemplate:                     getTemplate,
+		Usages: []certificates.KeyUsage{
+			// https://tools.ietf.org/html/rfc5280#section-4.2.1.3
+			//
+			// Digital signature allows the certificate to be used to verify
+			// digital signatures used during TLS negotiation.
+			certificates.UsageDigitalSignature,
+			// KeyEncipherment allows the cert/key pair to be used to encrypt
+			// keys, including the symmetric keys negotiated during TLS setup
+			// and used for data transfer.
+			certificates.UsageKeyEncipherment,
+			// ServerAuth allows the cert to be used by a TLS server to
+			// authenticate itself to a TLS client.
+			certificates.UsageServerAuth,
+		},
+		CertificateStore:      certificateStore,
+		CertificateExpiration: certificateExpiration,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize server certificate manager: %v", err)
+	}
+	return m, nil
+
+}
 
 // NewKubeletServerCertificateManager creates a certificate manager for the kubelet when retrieving a server certificate
 // or returns an error.
