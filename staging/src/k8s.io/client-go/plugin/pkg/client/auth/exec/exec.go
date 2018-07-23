@@ -192,7 +192,7 @@ func (a *Authenticator) UpdateTransportConfig(c *transport.Config) error {
 				return cert, nil
 			}
 		}
-		return a.cert()
+		return a.Cert()
 	}
 
 	var dial func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -251,7 +251,7 @@ func (a *Authenticator) credsExpired() bool {
 	return a.now().After(a.exp)
 }
 
-func (a *Authenticator) cert() (*tls.Certificate, error) {
+func (a *Authenticator) Cert() (*tls.Certificate, error) {
 	creds, err := a.getCreds()
 	if err != nil {
 		return nil, err
