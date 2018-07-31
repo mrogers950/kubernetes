@@ -42,7 +42,7 @@ import (
 
 type execManager struct {
 	pluginPath     string
-	firstArg       string
+	env            []api.ExecEnvVar
 	config         *certificate.Config
 	certAccessLock sync.RWMutex
 	cert           *tls.Certificate
@@ -57,8 +57,11 @@ func (m *execManager) Start() {
 	args = append(args, m.firstArg)
 	// add additional args
 
+	var envs = make([]api.ExecEnvVar, 0)
+
 	execProvider := &api.ExecConfig{
 		Command:    m.pluginPath,
+		Env:        envs,
 		Args:       args,
 		APIVersion: "client.authentication.k8s.io/v1alpha1",
 	}
@@ -85,8 +88,8 @@ func (m *execManager) ServerHealthy() bool {
 	return true
 }
 
-func NewExecManager(pluginPath, nodeName string, config *certificate.Config) (certificate.Manager, error) {
-	return &execManager{pluginPath: pluginPath, firstArg: nodeName, config: config}, nil
+func NewExecManager(pluginPath string, envs []api.ExecEnvVar, config *certificate.Config) (certificate.Manager, error) {
+	return &execManager{pluginPath: pluginPath, env: envs, config: config}, nil
 }
 
 func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletconfig.KubeletConfiguration, nodeName types.NodeName, getAddresses func() []v1.NodeAddress, certDirectory string) (certificate.Manager, error) {
@@ -124,7 +127,35 @@ func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletc
 			IPAddresses: ips,
 		}
 	}
-	m, err := NewExecManager(pluginPath, string(nodeName), &certificate.Config{
+
+	subjectEnv := kubeCfg.ServerCertExecEnvSubject
+	if len(subjectEnv) == 0 {
+		subjectEnv = "KUBERNETES_SERVER_CERT_EXEC_SUBJECT"
+	}
+
+	dnsNamesEnv := kubeCfg.ServerCertExecEnvDNSnames
+	if len(dnsNamesEnv) == 0 {
+		dnsNamesEnv = "KUBERNETES_SERVER_CERT_EXEC_DNS_NAMES"
+	}
+
+	ipNamesEnv := kubeCfg.ServerCertExecEnvIPnames
+	if len(ipNamesEnv) == 0 {
+		ipNamesEnv = "KUBERNETES_SERVER_CERT_EXEC_IP_NAMES"
+	}
+
+	addEnvs := []api.ExecEnvVar{
+		{Name: subjectEnv, Value: fmt.Sprintf("CN=system:node:%s,O=system:nodes", nodeName)},
+		{Name: dnsNamesEnv, Value: ""},
+		{Name: ipNamesEnv, Value: ""},
+	}
+
+	for k, v := range kubeCfg.ServerCertExecEnvOther {
+		addEnvs = append(addEnvs, api.ExecEnvVar{Name: k, Value: v})
+	}
+	envs := make([]api.ExecEnvVar, 0)
+	envs = append(envs, addEnvs...)
+
+	m, err := NewExecManager(pluginPath, envs, &certificate.Config{
 		CertificateSigningRequestClient: nil,
 		GetTemplate:                     getTemplate,
 		Usages: []certificates.KeyUsage{
