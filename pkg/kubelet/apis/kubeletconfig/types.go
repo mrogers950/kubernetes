@@ -279,11 +279,18 @@ type KubeletConfiguration struct {
 	// ConfigMapAndSecretChangeDetectionStrategy is a mode in which config map and secret managers are running.
 	ConfigMapAndSecretChangeDetectionStrategy ResourceChangeDetectionStrategy
 
-	// xxx
-	ServerCertExecEnvSubject  string
+	// Fields for the client-go exec plugin kubelet certificate rotation manager.
+	//
+	// Path to the exec plugin used to fetch a server cert for the kubelet.
+	ServerCertExecPluginPath string
+	// Name of the environment variable passed to the exec plugin containing the subject name of the server cert to fetch.
+	ServerCertExecEnvSubject string
+	// Name of the environment variable passed to the exec plugin containing the DNS SANs of the server cert to fetch.
 	ServerCertExecEnvDNSnames string
-	ServerCertExecEnvIPnames  string
-	ServerCertExecEnvOther    map[string]string
+	// Name of the environment variable passed to the exec plugin containing the IP address SANs of the server cert to fetch.
+	ServerCertExecEnvIPnames string
+	// A map of additional environment variables and their values to pass to the exec plugin.
+	ServerCertExecEnvOther map[string]string
 
 	/* the following fields are meant for Node Allocatable */
 

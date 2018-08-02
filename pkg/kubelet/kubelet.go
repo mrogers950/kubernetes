@@ -723,16 +723,31 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	klet.statusManager = status.NewManager(klet.kubeClient, klet.podManager, klet)
 
 	if kubeCfg.ServerTLSBootstrap && kubeDeps.TLSOptions != nil && utilfeature.DefaultFeatureGate.Enabled(features.RotateKubeletServerCertificate) {
-		klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateManager(klet.kubeClient, kubeCfg, klet.nodeName, klet.getLastObservedNodeAddresses, certDirectory)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize certificate manager: %v", err)
-		}
-		kubeDeps.TLSOptions.Config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-			cert := klet.serverCertificateManager.Current()
-			if cert == nil {
-				return nil, fmt.Errorf("no serving certificate available for the kubelet")
+		// Use the exec based certificate manager
+		if len(kubeCfg.ServerCertExecPluginPath) > 0 && utilfeature.DefaultFeatureGate.Enabled(features.EnableKubeletServerCertificateExec) {
+			klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateExecManager(kubeCfg.ServerCertExecPluginPath, kubeCfg, klet.nodeName, klet.getLastObservedNodeAddresses, certDirectory)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize certificate manager: %v", err)
 			}
-			return cert, nil
+			kubeDeps.TLSOptions.Config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				cert := klet.serverCertificateManager.Current()
+				if cert == nil {
+					return nil, fmt.Errorf("no serving certificate available for the kubelet")
+				}
+				return cert, nil
+			}
+		} else {
+			klet.serverCertificateManager, err = kubeletcertificate.NewKubeletServerCertificateManager(klet.kubeClient, kubeCfg, klet.nodeName, klet.getLastObservedNodeAddresses, certDirectory)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize certificate manager: %v", err)
+			}
+			kubeDeps.TLSOptions.Config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				cert := klet.serverCertificateManager.Current()
+				if cert == nil {
+					return nil, fmt.Errorf("no serving certificate available for the kubelet")
+				}
+				return cert, nil
+			}
 		}
 	}
 

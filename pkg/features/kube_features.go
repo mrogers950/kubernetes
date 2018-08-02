@@ -82,6 +82,13 @@ const (
 	// the API server as the certificate approaches expiration.
 	RotateKubeletClientCertificate utilfeature.Feature = "RotateKubeletClientCertificate"
 
+	// owner: @mrogers950
+	// alpha: v1.12
+	//
+	// Utilize a client-go exec plugin for fetching and rotating the kubelet
+	// server certificate.
+	EnableKubeletServerCertificateExec utilfeature.Feature = "EnableKubeletServerCertificateExec"
+
 	// owner: @msau42
 	// alpha: v1.7
 	//
@@ -361,6 +368,7 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	TaintBasedEvictions:                         {Default: false, PreRelease: utilfeature.Alpha},
 	RotateKubeletServerCertificate:              {Default: false, PreRelease: utilfeature.Alpha},
 	RotateKubeletClientCertificate:              {Default: true, PreRelease: utilfeature.Beta},
+	EnableKubeletServerCertificateExec:          {Default: false, PreRelease: utilfeature.Alpha},
 	PersistentLocalVolumes:                      {Default: true, PreRelease: utilfeature.Beta},
 	LocalStorageCapacityIsolation:               {Default: true, PreRelease: utilfeature.Beta},
 	HugePages:                                   {Default: true, PreRelease: utilfeature.Beta},
