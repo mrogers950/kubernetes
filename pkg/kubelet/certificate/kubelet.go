@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/util/certificate"
 	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
+	"strings"
 	"sync"
 )
 
@@ -53,16 +54,11 @@ func (m *execManager) SetCertificateSigningRequestClient(clientcertificates.Cert
 }
 
 func (m *execManager) Start() {
-	args := make([]string, 0)
-	args = append(args, m.firstArg)
-	// add additional args
-
-	var envs = make([]api.ExecEnvVar, 0)
-
+	m.certAccessLock.Lock()
+	defer m.certAccessLock.Unlock()
 	execProvider := &api.ExecConfig{
 		Command:    m.pluginPath,
-		Env:        envs,
-		Args:       args,
+		Env:        m.env,
 		APIVersion: "client.authentication.k8s.io/v1alpha1",
 	}
 	auth, err := exec.GetAuthenticator(execProvider)
@@ -92,6 +88,50 @@ func NewExecManager(pluginPath string, envs []api.ExecEnvVar, config *certificat
 	return &execManager{pluginPath: pluginPath, env: envs, config: config}, nil
 }
 
+const (
+	defaultSubjectEnv  = "KUBERNETES_SERVER_CERT_EXEC_SUBJECT"
+	defaultDNSNamesEnv = "KUBERNETES_SERVER_CERT_EXEC_DNS_NAMES"
+	defaultIPNamesEnv  = "KUBERNETES_SERVER_CERT_EXEC_IP_NAMES"
+)
+
+// getNodeExecEnv makes the node-specific environment variables.
+func getNodeExecEnv(kubeCfg *kubeletconfig.KubeletConfiguration, nodeName string, dnsNames []string, ipAddresses []net.IP) []api.ExecEnvVar {
+	subjectEnv := kubeCfg.ServerCertExecEnvSubject
+	if len(subjectEnv) == 0 {
+		subjectEnv = defaultSubjectEnv
+	}
+
+	dnsNamesEnv := kubeCfg.ServerCertExecEnvDNSnames
+	if len(dnsNamesEnv) == 0 {
+		dnsNamesEnv = defaultDNSNamesEnv
+	}
+
+	ipNamesEnv := kubeCfg.ServerCertExecEnvIPnames
+	if len(ipNamesEnv) == 0 {
+		ipNamesEnv = defaultIPNamesEnv
+	}
+
+	ips := make([]string, 0)
+	for _, ip := range ipAddresses {
+		ips = append(ips, ip.String())
+	}
+
+	addEnvs := []api.ExecEnvVar{
+		{Name: subjectEnv, Value: fmt.Sprintf("CN=system:node:%s,O=system:nodes", nodeName)},
+		{Name: dnsNamesEnv, Value: strings.Join(dnsNames, ",")},
+		{Name: ipNamesEnv, Value: strings.Join(ips, ",")},
+	}
+
+	for k, v := range kubeCfg.ServerCertExecEnvOther {
+		addEnvs = append(addEnvs, api.ExecEnvVar{Name: k, Value: v})
+	}
+	envs := make([]api.ExecEnvVar, 0)
+	envs = append(envs, addEnvs...)
+	return envs
+}
+
+// NewKubeletServerCertificateExecManager creates a certificate manager for the kubelet to fetch a server certificate by calling
+// an exec plugin, or returns an error.
 func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletconfig.KubeletConfiguration, nodeName types.NodeName, getAddresses func() []v1.NodeAddress, certDirectory string) (certificate.Manager, error) {
 	certificateStore, err := certificate.NewFileStore(
 		"kubelet-server",
@@ -128,32 +168,8 @@ func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletc
 		}
 	}
 
-	subjectEnv := kubeCfg.ServerCertExecEnvSubject
-	if len(subjectEnv) == 0 {
-		subjectEnv = "KUBERNETES_SERVER_CERT_EXEC_SUBJECT"
-	}
-
-	dnsNamesEnv := kubeCfg.ServerCertExecEnvDNSnames
-	if len(dnsNamesEnv) == 0 {
-		dnsNamesEnv = "KUBERNETES_SERVER_CERT_EXEC_DNS_NAMES"
-	}
-
-	ipNamesEnv := kubeCfg.ServerCertExecEnvIPnames
-	if len(ipNamesEnv) == 0 {
-		ipNamesEnv = "KUBERNETES_SERVER_CERT_EXEC_IP_NAMES"
-	}
-
-	addEnvs := []api.ExecEnvVar{
-		{Name: subjectEnv, Value: fmt.Sprintf("CN=system:node:%s,O=system:nodes", nodeName)},
-		{Name: dnsNamesEnv, Value: ""},
-		{Name: ipNamesEnv, Value: ""},
-	}
-
-	for k, v := range kubeCfg.ServerCertExecEnvOther {
-		addEnvs = append(addEnvs, api.ExecEnvVar{Name: k, Value: v})
-	}
-	envs := make([]api.ExecEnvVar, 0)
-	envs = append(envs, addEnvs...)
+	hostnames, ips := addressesToHostnamesAndIPs(getAddresses())
+	envs := getNodeExecEnv(kubeCfg, string(nodeName), hostnames, ips)
 
 	m, err := NewExecManager(pluginPath, envs, &certificate.Config{
 		CertificateSigningRequestClient: nil,
@@ -179,7 +195,6 @@ func NewKubeletServerCertificateExecManager(pluginPath string, kubeCfg *kubeletc
 		return nil, fmt.Errorf("failed to initialize server certificate manager: %v", err)
 	}
 	return m, nil
-
 }
 
 // NewKubeletServerCertificateManager creates a certificate manager for the kubelet when retrieving a server certificate

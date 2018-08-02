@@ -22,7 +22,9 @@ import (
 	"testing"
 
 	"k8s.io/api/core/v1"
+	//v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
 )
 
@@ -102,71 +104,18 @@ func TestAddressesToHostnamesAndIPs(t *testing.T) {
 	}
 }
 
-var nodeCert = `-----BEGIN CERTIFICATE REQUEST-----
-MIIDBDCCAewCAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0B
-AQEFAAOCAQ8AMIIBCgKCAQEAypwEc8kgzCWH9R3HoC6tdUdbalF5FrWGyv84Dplb
-/qdyO3++rqh3fnqGUWaErAy0TaC1v5lYihX4ASlCPbWvTTZBgzaFlxBdAm3NPYr+
-NRv4iBvMuPDOA0s9jVOK3vudqHbl7mYX46eHbyogX8Iu1lgzS97KRLje20lGWrEh
-iMDjjOcBijlk7t7ugW3id58RO52GXQrliDRVmjiWX8XBU7TpbSa/meWut3nrbZId
-6QYyzWbSVW74rEcjRxD8vhQ8wVTFhsSJ2Gp/IbRToYeIozIwm4p0SGBxqz3KwQmj
-IzxFcgqG/Y+yQLn5IeoDvXXrOVbG+nBtFo1Tjpw9NOy1xwIDAQABoIGqMIGnBgkq
-hkiG9w0BCQ4xgZkwgZYwHQYDVR0OBBYEFF7nH5h5PHo09n6jB9xUKqHdLRJ/MAkG
-A1UdEwQCMAAwCwYDVR0PBAQDAgWgMBoGA1UdEQQTMBGCCWxvY2FsaG9zdIcEfwAA
-ATAsBglghkgBhvhCAQ0EHxYdT3BlblNTTCBHZW5lcmF0ZWQgQ2VydGlmaWNhdGUw
-EwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBADo7mX9uSdwG
-Dga6raavcHDGOsMNJ3N5Q6pE05s5+yPHBsHQlbWjhWRpuxNBAoLCR0sF92H97BFl
-NZuxBAIWRetNsaWffg99Zgp/cKeLxdH96jhX5L+KTc7/KmB7H0aDj2flB85vdCOR
-bfs0jXhfM3FBxFwQw73FSQORwhq4zujmSS8vKELxp/H9XR0f7vKlz4JE6S+Yfq2b
-On9kpogRVsff1Ic+b8PRFc+B0a6DYUw+LR/SsJaa/4mBOKzjlMWYiM3fSP9hVZkh
-b+F+u00qh2g+67m9D+lN/CHJluybdFhxBVszSZqB/MK1H77YxItLJC1GRUdx9Zx2
-dPH+u69r214=
------END CERTIFICATE REQUEST-----`
-
-var nodeKey = `-----BEGIN RSA PRIVATE KEY-----
-MIIEowIBAAKCAQEAypwEc8kgzCWH9R3HoC6tdUdbalF5FrWGyv84Dplb/qdyO3++
-rqh3fnqGUWaErAy0TaC1v5lYihX4ASlCPbWvTTZBgzaFlxBdAm3NPYr+NRv4iBvM
-uPDOA0s9jVOK3vudqHbl7mYX46eHbyogX8Iu1lgzS97KRLje20lGWrEhiMDjjOcB
-ijlk7t7ugW3id58RO52GXQrliDRVmjiWX8XBU7TpbSa/meWut3nrbZId6QYyzWbS
-VW74rEcjRxD8vhQ8wVTFhsSJ2Gp/IbRToYeIozIwm4p0SGBxqz3KwQmjIzxFcgqG
-/Y+yQLn5IeoDvXXrOVbG+nBtFo1Tjpw9NOy1xwIDAQABAoIBACiFSXKqr++ENgu0
-t/72NuS0r7i0sKX1Cg9BOcHZtAdbD8KMiuM9eCCIeqJ/AVuzcr/vu0mlboq3WBFL
-Yh8bXgLwLewDFHag5CkfMqPzT2HpxSvbe3clWd5Yxuej5Ksx4VcW6GdkbbSvBawa
-3bypBlsB6shqt0NFQfTTU8nBkTZbGk3pv1VBKKEQnrYsV03tSO5Ph5jppdUusYFm
-2R8mgDwOR5PxcpN0uzA9f2XbKIPIUnhiNNcIss5jASTi5IPojOPgQurTq9aDR2XA
-nsJB+h+AqZbwQUpzrCMAlK8Oz/xwUs6BqSptVFDY0yVNS1qVfap4xd5oNWxGksQV
-o3P0kyECgYEA5WNy7gqrZ+3Kuk3vqWghDWmZ+jhKjeuGy45YnMYs7WRFK5ckBo6r
-iucbj/1GwqIfmFAXUIDTlG5tJHL3s0Nmv5Q0Tjq5umjXpf/iiiQMLK/E8FgMpH0a
-dMGqcFW49VBYa/CD2/HT6YjyDqy13Dj9ptYnMbMe3z/BG8puG3hoPJECgYEA4h1D
-xRQ9HEUVOVKMFLoCvAzBeVh3UZmA5W7Bl904+qLN3wkGy3bIBiVlQkZtaY5AspPg
-NkccJYsuPoDkx0Qp8qt0M6hWOmgSPBQMpSnzWoQF42YfuUemqFjfM0j4EEIEvGhD
-O2vbryDMn4NHAk/u1pnxmlVwOM8LNM3hJb+QWNcCgYEAvAC7BHAINcDF49XWdCDc
-3hJL2bFjIVgE/TZoV+1wiwwgSO6x3xH1dH2fsG6kHQclH/+cbCV5w3CR0UrMysaW
-IrRD/k3RRP+CpxHGyPNsav+QSG/RxMqn8UN8/l6znZNBNQ5F8/EKfp/3y6Ev2BN5
-iNCCBRDKX6zwB2fswGT6AZECgYAoB2pB721KHei99yEZYjytscxmgQTOi1BITa00
-B1PY+w1bGKv9RQ/wFpqweutProFBm/Ara7dN5i/PnN3jcOvELBosMvbg7B+eRyZd
-7ulH8utf8GpZUJfuYZ1R5O8VYbqY6BRO5q9Dd5kB/CmL/T6Y+zPMUKfHRtADDxd2
-qU0SjQKBgDrOCBhxDn61cRyMyUMo7zXxsC+YgZYwtDyYtI/s37Px2nWO+lfGVX/q
-ZhM/GfLa20Uqe9a9Khw7tJ1VSDvFayyv/c2WuszIjLXgE1wDLnOVcetQSn3eDag1
-IFBW9JlHHZ5RgEDdy3/lmWMi4nLDsa+/UNXs++AXOSAB0o+yFUQP
------END RSA PRIVATE KEY-----
-`
-
 func TestKubeletCertificateExecManager(t *testing.T) {
 	tests := []struct {
 		name       string
 		addresses  []v1.NodeAddress
-		keyFile    string
-		certFile   string
 		certDir    string
 		nodeName   string
 		pluginPath string
 	}{
 		{
-			name:       "first",
+			name:       "env and output",
 			pluginPath: "testdata/plugin.sh",
 			certDir:    "testdata/certs",
-			keyFile:    "testdata/certs/node.key",
-			certFile:   "testdata/certs/node.crt",
 			nodeName:   "localhost",
 			addresses: []v1.NodeAddress{
 				{Type: v1.NodeHostName, Address: "localhost"},
@@ -180,7 +129,15 @@ func TestKubeletCertificateExecManager(t *testing.T) {
 			getAddresses := func() []v1.NodeAddress {
 				return tt.addresses
 			}
-			m, err := NewKubeletServerCertificateExecManager(tt.pluginPath, &kubeletconfig.KubeletConfiguration{TLSCertFile: tt.certFile, TLSPrivateKeyFile: tt.keyFile}, types.NodeName(tt.nodeName), getAddresses, tt.certDir)
+			cfg := &kubeletconfig.KubeletConfiguration{
+				ServerCertExecEnvSubject:  "test_subject",
+				ServerCertExecEnvDNSnames: "test_dns",
+				ServerCertExecEnvIPnames:  "test_ip",
+				ServerCertExecEnvOther: map[string]string{
+					"test_other": "foo",
+				},
+			}
+			m, err := NewKubeletServerCertificateExecManager(tt.pluginPath, cfg, types.NodeName(tt.nodeName), getAddresses, tt.certDir)
 			if err != nil {
 				t.Errorf("NewKubeletServerCertificateExecManager returned err: %v", err)
 			}
@@ -188,6 +145,164 @@ func TestKubeletCertificateExecManager(t *testing.T) {
 			cert := m.Current()
 			if cert == nil {
 				t.Errorf("no certificate")
+			}
+		})
+	}
+}
+
+func ipNamesToIPs(ips []string) []net.IP {
+	out := make([]net.IP, 0)
+	for _, ip := range ips {
+		if parsed := net.ParseIP(ip); parsed != nil {
+			out = append(out, parsed)
+		}
+	}
+	return out
+}
+
+func TestGetNodeExecEnv(t *testing.T) {
+	tests := []struct {
+		name         string
+		nodeName     string
+		kubeCfg      *kubeletconfig.KubeletConfiguration
+		dnsNames     []string
+		ipNames      []string
+		expectedEnvs []api.ExecEnvVar
+	}{
+		{
+			name:     "defaults no names",
+			nodeName: "localhost",
+			kubeCfg: &kubeletconfig.KubeletConfiguration{
+				ServerCertExecEnvSubject:  "",
+				ServerCertExecEnvDNSnames: "",
+				ServerCertExecEnvIPnames:  "",
+				ServerCertExecEnvOther:    nil,
+			},
+			dnsNames: nil,
+			ipNames:  nil,
+			expectedEnvs: []api.ExecEnvVar{
+				{
+					Name:  defaultSubjectEnv,
+					Value: "CN=system:node:localhost,O=system:nodes",
+				},
+				{
+					Name:  defaultDNSNamesEnv,
+					Value: "",
+				},
+				{
+					Name:  defaultIPNamesEnv,
+					Value: "",
+				},
+			},
+		},
+		{
+			name:     "defaults with names",
+			nodeName: "localhost",
+			kubeCfg: &kubeletconfig.KubeletConfiguration{
+				ServerCertExecEnvSubject:  "",
+				ServerCertExecEnvDNSnames: "",
+				ServerCertExecEnvIPnames:  "",
+				ServerCertExecEnvOther:    nil,
+			},
+			dnsNames: []string{"localhost"},
+			ipNames:  []string{"127.0.0.1"},
+			expectedEnvs: []api.ExecEnvVar{
+				{
+					Name:  defaultSubjectEnv,
+					Value: "CN=system:node:localhost,O=system:nodes",
+				},
+				{
+					Name:  defaultDNSNamesEnv,
+					Value: "localhost",
+				},
+				{
+					Name:  defaultIPNamesEnv,
+					Value: "127.0.0.1",
+				},
+			},
+		},
+		{
+			name:     "defaults multiple names",
+			nodeName: "localhost",
+			kubeCfg: &kubeletconfig.KubeletConfiguration{
+				ServerCertExecEnvSubject:  "",
+				ServerCertExecEnvDNSnames: "",
+				ServerCertExecEnvIPnames:  "",
+				ServerCertExecEnvOther:    nil,
+			},
+			dnsNames: []string{
+				"localhost",
+				"foo",
+			},
+			ipNames: []string{
+				"127.0.0.1",
+				"10.0.0.1",
+			},
+			expectedEnvs: []api.ExecEnvVar{
+				{
+					Name:  defaultSubjectEnv,
+					Value: "CN=system:node:localhost,O=system:nodes",
+				},
+				{
+					Name:  defaultDNSNamesEnv,
+					Value: "localhost,foo",
+				},
+				{
+					Name:  defaultIPNamesEnv,
+					Value: "127.0.0.1,10.0.0.1",
+				},
+			},
+		},
+		{
+			name:     "defaults multiple names",
+			nodeName: "localhost",
+			kubeCfg: &kubeletconfig.KubeletConfiguration{
+				ServerCertExecEnvSubject:  "subject_names",
+				ServerCertExecEnvDNSnames: "dns_names",
+				ServerCertExecEnvIPnames:  "ip_names",
+				ServerCertExecEnvOther: map[string]string{
+					"other1": "foo",
+					"other2": "bar",
+				},
+			},
+			dnsNames: []string{
+				"localhost",
+				"foo",
+			},
+			ipNames: []string{
+				"127.0.0.1",
+				"10.0.0.1",
+			},
+			expectedEnvs: []api.ExecEnvVar{
+				{
+					Name:  "subject_names",
+					Value: "CN=system:node:localhost,O=system:nodes",
+				},
+				{
+					Name:  "dns_names",
+					Value: "localhost,foo",
+				},
+				{
+					Name:  "ip_names",
+					Value: "127.0.0.1,10.0.0.1",
+				},
+				{
+					Name:  "other1",
+					Value: "foo",
+				},
+				{
+					Name:  "other2",
+					Value: "bar",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			envs := getNodeExecEnv(tt.kubeCfg, tt.nodeName, tt.dnsNames, ipNamesToIPs(tt.ipNames))
+			if !reflect.DeepEqual(tt.expectedEnvs, envs) {
+				t.Errorf("expected output does not match: expected %v, got %v", tt.expectedEnvs, envs)
 			}
 		})
 	}
